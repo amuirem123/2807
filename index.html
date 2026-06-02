@@ -15,7 +15,7 @@
         h2 { 
             margin-top: 15px; 
             color: #FFD700; 
-            text-shadow: 0 0 15px rgba(255, 215, 0, 0.6); \
+            text-shadow: 0 0 15px rgba(255, 215, 0, 0.6); 
             letter-spacing: 2px;
         }
         canvas { 
@@ -23,12 +23,12 @@
             display: block; 
             margin: 10px auto; 
             border: 3px solid #444; 
-            box-shadow: 0 0 40px rgba(0,0,0,0.8); \
+            box-shadow: 0 0 40px rgba(0,0,0,0.8); 
             border-radius: 8px; 
         }
         .info { font-size: 0.9em; color: #ccc; line-height: 1.6; margin-bottom: 20px;}
         .math-tag { 
-            display: inline-block; background: #333; \
+            display: inline-block; background: #333; 
             padding: 3px 8px; border-radius: 4px; \
             color: #5bc0de; font-weight: bold; margin: 2px;
         }
@@ -41,7 +41,7 @@
         학번: 2807 이름: 신지원 | 
         <span class="math-tag">뉴턴 운동 제3법칙</span>
         <span class="math-tag">충격량 분산 모델 I = mv(1+e)/N</span>
-        <span class="math-tag">역학적 에너지 손실 ΔEk</span>
+        <span class="math-tag">패들의 운동량 보존 법칙 적용</span>
     </div>
 
     <canvas id="myCanvas" width="960" height="540"></canvas>
@@ -54,6 +54,7 @@
     const paddleHeight = 15;
     const paddleWidth = 140;
     let paddleX = (canvas.width - paddleWidth) / 2;
+    let lastPaddleX = paddleX; // [물리 주입] 패들의 속도를 측정하기 위한 이전 프레임 좌표 변수
 
     const brickRowCount = 5;
     const brickColumnCount = 9;
@@ -71,9 +72,9 @@
     // [물리 상수 세팅] 게임의 결(밸런스)을 유지하기 위한 핵심 계수
     const damageScalingFactor = 0.35; // 충격량을 내구도 데미지로 변환하는 비례상수 k
     const ballMass = 1.2;              // 공의 물리적 질량 m (kg)
-    const paddleRestitution = 0.65;    // 플레이어 고무 패들의 반발계수
+    const paddleRestitution = 0.75;    // 플레이어 패들의 기본 반발계수 e
 
-    // 벽돌 초기화 (재질별 내구도 및 반발계수 e 다변화 설정 및 초기 위치 할당)
+    // 벽돌 초기화 (재질별 내구도 및 반발계수 e 다변화 설정 및 초기 위치 고정 배정)
     for(let c=0; c<brickColumnCount; c++) {
         bricks[c] = [];
         for(let r=0; r<brickRowCount; r++) {
@@ -94,7 +95,6 @@
                 color = "#4ba3a5";
             }
 
-            // 공이 켜지자마자 올바른 좌표를 인식할 수 있도록 미리 초기 좌표 연산 배정
             let bX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
             let bY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
 
@@ -116,7 +116,7 @@
             this.dx = dx;
             this.dy = dy;
             this.radius = radius;
-            this.mass = ballMass; // 질량 반영
+            this.mass = ballMass; 
             this.active = true;
         }
 
@@ -132,26 +132,22 @@
         }
 
         update() {
-            // 벽면 경계면 충돌 처리 (고정벽면 반발계수 e = 1.0 완전 탄성)
             if(this.x + this.dx > canvas.width - this.radius || this.x + this.dx < this.radius) {
                 this.dx = -this.dx;
             }
             if(this.y + this.dy < this.radius) {
                 this.dy = -this.dy;
             }
-
-            // 바닥 유실 판정
             if(this.y + this.dy > canvas.height - this.radius) {
                 this.active = false;
             }
 
-            // 프레임 단위 위치 가산 (오일러 적분 연산)
             this.x += this.dx;
             this.y += this.dy;
         }
     }
 
-    // 초기 공 객체 주입 (시작 위치 확보)
+    // 초기 공 객체 주입 (시작 위치 마진 확보)
     balls.push(new Ball(canvas.width / 2, canvas.height - 45, 4, -5));
 
     // 마우스 조작 이벤트 리스너 연동
@@ -175,7 +171,7 @@
         return distanceSquared < (ball.radius * ball.radius);
     }
 
-    // [핵심 물리학 알고리즘] 단일 프레임 이중 부호 반전 오차 해결 및 충격량 분산 모델
+    // [핵심 물리 알고리즘] 단일 프레임 이중 부호 반전 오차 해결 및 충격량 분산 모델
     function handlePhysicsCollision() {
         for(let i = 0; i < balls.length; i++) {
             let b = balls[i];
@@ -183,7 +179,6 @@
 
             let collidedBricks = [];
 
-            // 1단계: 현재 프레임에서 공의 반경 내에 검출된 모든 벽돌 리스트 누적
             for(let c = 0; c < brickColumnCount; c++) {
                 for(let r = 0; r < brickRowCount; r++) {
                     let brick = bricks[c][r];
@@ -195,11 +190,9 @@
 
             if(collidedBricks.length === 0) continue;
 
-            // 2단계: 뉴턴 역학 계산을 위한 전 상태 속도 벡터 보존
             const oldDy = b.dy;
             const N = collidedBricks.length; 
 
-            // 3단계: 평균 반발계수 e 도출 후, 부호 반전 연산 단 '한 번만' 독점 실행 (관통 버그 원천 차단)
             let avgRestitution = 0;
             collidedBricks.forEach(brick => avgRestitution += brick.restitution);
             avgRestitution /= N;
@@ -209,18 +202,16 @@
 
             // 뉴턴 제3법칙(작용-반작용)에 입각한 공의 총 충격량(I) 산출량 계산: I = m * |Δv|
             let totalImpulse = b.mass * Math.abs(b.dy - oldDy);
-
-            // 4단계: 충격량 분산 분배 모델 적용 및 내구도 차감 연산 [I_distributed = Total_I / N]
             let distributedImpulse = totalImpulse / N;
 
             collidedBricks.forEach(brick => {
                 brick.hp -= (distributedImpulse * damageScalingFactor);
 
-                // 5단계: 역학적 에너지 손실(ΔEk) 정량 추적 및 시각적 파티클 동적 연동
                 if(brick.hp <= 0) {
                     brick.active = false;
                     score += brick.type * 10;
 
+                    // 역학적 에너지 손실(ΔEk = 0.5 * m * (v^2 - v'^2)) 연산 후 파티클 연동
                     let lostEnergy = 0.5 * b.mass * (Math.pow(oldDy, 2) - Math.pow(b.dy, 2));
                     let particleCount = Math.min(Math.floor(lostEnergy * 15), 35);
                     spawnVisualParticles(brick.x + brick.width/2, brick.y + brick.height/2, brick.color, lostEnergy, particleCount);
@@ -293,10 +284,10 @@
         ctx.fill();
         ctx.closePath();
 
-        // 3. 실시간 강체 물리 연산 모듈 트리거 실행 (벽돌 좌표 확보 후 연산하도록 순서 보정)
+        // 3. 실시간 강체 물리 연산 모듈 트리거 실행
         handlePhysicsCollision();
 
-        // 4. 시각 이펙트 파티클 시스템 업데이트 및 가비지 컬렉션 처리
+        // 4. 시각 이펙트 파티클 시스템 업데이트 
         for(let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
             if(p.alpha <= 0) {
@@ -321,17 +312,24 @@
             // 패들 충돌 판정 바운더리 진입 제어
             if(b.y + b.dy > canvas.height - b.radius - paddleHeight - 10) {
                 if(b.x > paddleX && b.x < paddleX + paddleWidth) {
-                    let hitPoint = (b.x - (paddleX + paddleWidth/2)) / (paddleWidth/2);
                     
-                    // 반발계수 공식 적용
+                    // [물리학 I 운동량 전가 공식 핵심 로직]
+                    // 현 프레임 변위차를 이용해 패들의 순간 속도(V_paddle = delta_x / delta_t) 연산
+                    let paddleVelocity = paddleX - lastPaddleX; 
+
+                    let hitPoint = (b.x - (paddleX + paddleWidth/2)) / (paddleWidth/2);
                     let currentSpeed = Math.sqrt(b.dx*b.dx + b.dy*b.dy); 
                     let nextSpeed = currentSpeed * paddleRestitution; 
 
-                    b.dx = hitPoint * (nextSpeed * 1.5);
+                    // 운동량 보존 법칙 적용: 기본 기하학 반사 속도에 패들의 속도 벡터의 35%(완충비)를 합산 전가
+                    b.dx = (hitPoint * nextSpeed) + (paddleVelocity * 0.35); 
                     b.dy = -Math.sqrt(Math.max(Math.pow(currentSpeed, 2) - Math.pow(b.dx, 2), 16)); 
                 }
             }
         }
+
+        // 다음 프레임 속도 연산을 위해 현재 패들 위치 백업
+        lastPaddleX = paddleX;
 
         // 게임 오버 가이드
         if(balls.length === 0) {
