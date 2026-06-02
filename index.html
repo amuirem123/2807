@@ -29,7 +29,7 @@
         .info { font-size: 0.9em; color: #ccc; line-height: 1.6; margin-bottom: 20px;}
         .math-tag { 
             display: inline-block; background: #333; 
-            padding: 3px 8px; border-radius: 4px; \
+            padding: 3px 8px; border-radius: 4px; 
             color: #5bc0de; font-weight: bold; margin: 2px;
         }
     </style>
@@ -41,7 +41,7 @@
         학번: 2807 이름: 신지원 | 
         <span class="math-tag">뉴턴 운동 제3법칙</span>
         <span class="math-tag">충격량 분산 모델 I = mv(1+e)/N</span>
-        <span class="math-tag">패들의 운동량 보존 법칙 적용</span>
+        <span class="math-tag">2차원 측면/상하면 분해 반사</span>
     </div>
 
     <canvas id="myCanvas" width="960" height="540"></canvas>
@@ -50,11 +50,10 @@
     const canvas = document.getElementById("myCanvas");
     const ctx = canvas.getContext("2d");
 
-    // 기본 게임 설정 데이터
     const paddleHeight = 15;
     const paddleWidth = 140;
     let paddleX = (canvas.width - paddleWidth) / 2;
-    let lastPaddleX = paddleX; // [물리 주입] 패들의 속도를 측정하기 위한 이전 프레임 좌표 변수
+    let lastPaddleX = paddleX; 
 
     const brickRowCount = 5;
     const brickColumnCount = 9;
@@ -69,29 +68,27 @@
     let particles = [];
     let balls = [];
 
-    // [물리 상수 세팅] 게임의 결(밸런스)을 유지하기 위한 핵심 계수
-    const damageScalingFactor = 0.35; // 충격량을 내구도 데미지로 변환하는 비례상수 k
-    const ballMass = 1.2;              // 공의 물리적 질량 m (kg)
-    const paddleRestitution = 0.75;    // 플레이어 패들의 기본 반발계수 e
+    const damageScalingFactor = 0.35; 
+    const ballMass = 1.2;              
+    const paddleRestitution = 0.75;    
 
-    // 벽돌 초기화 (재질별 내구도 및 반발계수 e 다변화 설정 및 초기 위치 고정 배정)
     for(let c=0; c<brickColumnCount; c++) {
         bricks[c] = [];
         for(let r=0; r<brickRowCount; r++) {
             let type = 1;
             let hp = 1.0;
-            let restitution = 0.70; // [기본형 - 건조한 목재 재질]
+            let restitution = 0.70; 
             let color = "#e0a96d";
 
             if(r === 0) { 
                 type = 2; 
                 hp = 3.5; 
-                restitution = 0.92; // [강화형 - 티타늄 강철 재질]
+                restitution = 0.92; 
                 color = "#8a9a86"; 
             } else if(r === 1 || r === 2) {
                 type = 3;
                 hp = 2.0;
-                restitution = 0.80; // [일반형 - 강화 유리 재질]
+                restitution = 0.80; 
                 color = "#4ba3a5";
             }
 
@@ -108,7 +105,6 @@
         }
     }
 
-    // 공(Ball) 클래스 설계
     class Ball {
         constructor(x, y, dx, dy, radius = 8) {
             this.x = x;
@@ -147,10 +143,8 @@
         }
     }
 
-    // 초기 공 객체 주입 (시작 위치 마진 확보)
     balls.push(new Ball(canvas.width / 2, canvas.height - 45, 4, -5));
 
-    // 마우스 조작 이벤트 리스너 연동
     document.addEventListener("mousemove", mouseMoveHandler, false);
     function mouseMoveHandler(e) {
         const relativeX = e.clientX - canvas.getBoundingClientRect().left;
@@ -159,7 +153,6 @@
         }
     }
 
-    // 원형 오브젝트와 직사각형(AABB) 간의 수학적 Clamping 충돌 검사 알고리즘
     function checkCircleRectCollision(ball, rect) {
         let closestX = Math.max(rect.x, Math.min(ball.x, rect.x + rect.width));
         let closestY = Math.max(rect.y, Math.min(ball.y, rect.y + rect.height));
@@ -171,7 +164,7 @@
         return distanceSquared < (ball.radius * ball.radius);
     }
 
-    // [핵심 물리 알고리즘] 단일 프레임 이중 부호 반전 오차 해결 및 충격량 분산 모델
+    // [강화된 물리 알고리즘] 이중 충돌 분산 처리 + 좌우 옆면 벡터 반사 분해 시스템
     function handlePhysicsCollision() {
         for(let i = 0; i < balls.length; i++) {
             let b = balls[i];
@@ -190,6 +183,8 @@
 
             if(collidedBricks.length === 0) continue;
 
+            // 속도 벡터 변화량 추적을 위한 전 상태 저장
+            const oldDx = b.dx;
             const oldDy = b.dy;
             const N = collidedBricks.length; 
 
@@ -197,11 +192,27 @@
             collidedBricks.forEach(brick => avgRestitution += brick.restitution);
             avgRestitution /= N;
 
-            // 비탄성 충돌 반사 연산 (v' = -e * v)
-            b.dy = -avgRestitution * b.dy;
+            // [핵심 기믹] 첫 번째 충돌 벽돌 기준으로 법선 방향(상하 면 vs 좌우 옆면) 판정
+            let refBrick = collidedBricks[0];
+            let closestX = Math.max(refBrick.x, Math.min(b.x, refBrick.x + refBrick.width));
+            let closestY = Math.max(refBrick.y, Math.min(b.y, refBrick.y + refBrick.height));
+            
+            let diffX = Math.abs(b.x - closestX);
+            let diffY = Math.abs(b.y - closestY);
 
-            // 뉴턴 제3법칙(작용-반작용)에 입각한 공의 총 충격량(I) 산출량 계산: I = m * |Δv|
-            let totalImpulse = b.mass * Math.abs(b.dy - oldDy);
+            let totalImpulse = 0;
+
+            if (diffX > diffY) {
+                // [좌우 옆면 충돌인 경우]: x축 속도 벡터를 비탄성 반사
+                b.dx = -avgRestitution * b.dx;
+                totalImpulse = b.mass * Math.abs(b.dx - oldDx); // x축 충격량 산출
+            } else {
+                // [상하 윗면/아랫면 충돌인 경우]: y축 속도 벡터를 비탄성 반사
+                b.dy = -avgRestitution * b.dy;
+                totalImpulse = b.mass * Math.abs(b.dy - oldDy); // y축 충격량 산출
+            }
+
+            // 충격량 균등 분산 분배 적용
             let distributedImpulse = totalImpulse / N;
 
             collidedBricks.forEach(brick => {
@@ -211,22 +222,23 @@
                     brick.active = false;
                     score += brick.type * 10;
 
-                    // 역학적 에너지 손실(ΔEk = 0.5 * m * (v^2 - v'^2)) 연산 후 파티클 연동
-                    let lostEnergy = 0.5 * b.mass * (Math.pow(oldDy, 2) - Math.pow(b.dy, 2));
-                    let particleCount = Math.min(Math.floor(lostEnergy * 15), 35);
-                    spawnVisualParticles(brick.x + brick.width/2, brick.y + brick.height/2, brick.color, lostEnergy, particleCount);
+                    // 유실된 역학적 에너지를 추적하여 파티클 비산 속도 벡터에 대입
+                    let lostEnergy = 0.5 * b.mass * ((Math.pow(oldDx,2)+Math.pow(oldDy,2)) - (Math.pow(b.dx,2)+Math.pow(b.dy,2)));
+                    let particleCount = Math.min(Math.floor(Math.abs(lostEnergy) * 15), 35);
+                    if(particleCount < 10) particleCount = 15; // 시각적 최소 파티클 보장
+                    
+                    spawnVisualParticles(brick.x + brick.width/2, brick.y + brick.height/2, brick.color, Math.abs(lostEnergy), particleCount);
                 }
             });
         }
     }
 
-    // 손실 에너지 기반 비산 파티클 생성기
     function spawnVisualParticles(x, y, color, energy, count) {
         for (let i = 0; i < count; i++) {
             particles.push({
                 x: x, y: y,
-                dx: (Math.random() - 0.5) * (energy * 3.5),
-                dy: (Math.random() - 0.5) * (energy * 3.5),
+                dx: (Math.random() - 0.5) * (energy * 3.5 + 2),
+                dy: (Math.random() - 0.5) * (energy * 3.5 + 2),
                 radius: Math.random() * 3 + 2,
                 color: color,
                 alpha: 1,
@@ -249,11 +261,9 @@
         }
     }
 
-    // 메인 그래픽 렌더링 루프 루틴
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 1. 벽돌 드로잉 
         for(let c=0; c<brickColumnCount; c++) {
             for(let r=0; r<brickRowCount; r++) {
                 let b = bricks[c][r];
@@ -277,17 +287,14 @@
             }
         }
 
-        // 2. 플레이어 제어 패들 드로잉
         ctx.beginPath();
         ctx.roundRect(paddleX, canvas.height-paddleHeight-10, paddleWidth, paddleHeight, 5);
         ctx.fillStyle = "#00BFFF";
         ctx.fill();
         ctx.closePath();
 
-        // 3. 실시간 강체 물리 연산 모듈 트리거 실행
         handlePhysicsCollision();
 
-        // 4. 시각 이펙트 파티클 시스템 업데이트 
         for(let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
             if(p.alpha <= 0) {
@@ -298,7 +305,6 @@
             }
         }
 
-        // 5. 공 개체 상태 업데이트 및 고무 패들 충돌 연산 처리
         for(let i = 0; i < balls.length; i++) {
             let b = balls[i];
             if(!b.active) { 
@@ -309,29 +315,22 @@
             b.draw(); 
             b.update();
 
-            // 패들 충돌 판정 바운더리 진입 제어
             if(b.y + b.dy > canvas.height - b.radius - paddleHeight - 10) {
                 if(b.x > paddleX && b.x < paddleX + paddleWidth) {
-                    
-                    // [물리학 I 운동량 전가 공식 핵심 로직]
-                    // 현 프레임 변위차를 이용해 패들의 순간 속도(V_paddle = delta_x / delta_t) 연산
                     let paddleVelocity = paddleX - lastPaddleX; 
 
                     let hitPoint = (b.x - (paddleX + paddleWidth/2)) / (paddleWidth/2);
                     let currentSpeed = Math.sqrt(b.dx*b.dx + b.dy*b.dy); 
                     let nextSpeed = currentSpeed * paddleRestitution; 
 
-                    // 운동량 보존 법칙 적용: 기본 기하학 반사 속도에 패들의 속도 벡터의 35%(완충비)를 합산 전가
                     b.dx = (hitPoint * nextSpeed) + (paddleVelocity * 0.35); 
                     b.dy = -Math.sqrt(Math.max(Math.pow(currentSpeed, 2) - Math.pow(b.dx, 2), 16)); 
                 }
             }
         }
 
-        // 다음 프레임 속도 연산을 위해 현재 패들 위치 백업
         lastPaddleX = paddleX;
 
-        // 게임 오버 가이드
         if(balls.length === 0) {
             alert("GAME OVER! 물리 엔진 최종 획득 점수: " + score);
             document.location.reload();
@@ -341,7 +340,6 @@
         requestAnimationFrame(draw);
     }
 
-    // 루프 실행 함수 개시
     draw();
 </script>
 
